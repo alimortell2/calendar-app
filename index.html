@@ -565,6 +565,8 @@
 
 <script>
 const STORAGE_KEY = "calendar-app-client-id";
+const TOKEN_KEY = "calendar-app-token";
+const TOKEN_EXPIRY_KEY = "calendar-app-token-expiry";
 const DEFAULT_CLIENT_ID = "649649731227-ph9eb6nugadules79irs8fo9ccvd5m9n.apps.googleusercontent.com";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
@@ -635,6 +637,7 @@ window.addEventListener("load", () => {
 function initAuth() {
   if (!gapiReady || !clientId) return;
 
+  // Returning from Google's OAuth redirect
   if (window.location.hash.includes("access_token=")) {
     const p = new URLSearchParams(window.location.hash.substring(1));
     const err = p.get("error");
@@ -646,21 +649,48 @@ function initAuth() {
       return;
     }
     const token = p.get("access_token");
+    const expiresIn = parseInt(p.get("expires_in")) || 3600;
     if (token) {
-      accessToken = token;
-      gapi.client.setToken({ access_token: token });
+      saveToken(token, expiresIn);
+      enterApp(token);
       history.replaceState({}, "", window.location.pathname);
-      $("#auth-gate").classList.add("hidden");
-      $("#setup").classList.add("hidden");
-      $("#app").classList.remove("hidden");
-      build();
-      loadEvents();
       return;
     }
   }
 
+  // Try restoring a still-valid saved token (so we don't make the user sign in every visit)
+  const savedToken = localStorage.getItem(TOKEN_KEY);
+  const savedExpiry = parseInt(localStorage.getItem(TOKEN_EXPIRY_KEY) || "0");
+  if (savedToken && Date.now() < savedExpiry) {
+    enterApp(savedToken);
+    return;
+  }
+
   $("#auth-gate").classList.remove("hidden");
   $("#app").classList.add("hidden");
+}
+
+function saveToken(token, expiresInSec) {
+  // Subtract 60s buffer so we don't try to use a token that's about to expire
+  const expiry = Date.now() + (Math.max(60, expiresInSec) - 60) * 1000;
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_EXPIRY_KEY, String(expiry));
+}
+
+function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_EXPIRY_KEY);
+  accessToken = null;
+}
+
+function enterApp(token) {
+  accessToken = token;
+  gapi.client.setToken({ access_token: token });
+  $("#auth-gate").classList.add("hidden");
+  $("#setup").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  build();
+  loadEvents();
 }
 
 $("#signin-btn").addEventListener("click", () => {
@@ -669,8 +699,7 @@ $("#signin-btn").addEventListener("click", () => {
     redirect_uri: window.location.origin + window.location.pathname,
     response_type: "token",
     scope: SCOPES,
-    include_granted_scopes: "true",
-    prompt: "consent"
+    include_granted_scopes: "true"
   });
   window.location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
 });
@@ -956,6 +985,13 @@ async function loadEvents() {
     else { renderMonthEvents(); }
     renderList();
   } catch (e) {
+    if (e && (e.status === 401 || (e.result && e.result.error && e.result.error.code === 401))) {
+      // Token rejected — clear it and bounce back to sign in
+      clearToken();
+      $("#app").classList.add("hidden");
+      $("#auth-gate").classList.remove("hidden");
+      return;
+    }
     showToast("Couldn't load events");
     console.error(e);
   }
