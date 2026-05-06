@@ -368,6 +368,11 @@ const STORAGE_KEY = "calendar-app-client-id";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 
+// Allow ?reset to wipe stored client ID and force the setup screen back open
+if (new URLSearchParams(window.location.search).has("reset")) {
+  localStorage.removeItem(STORAGE_KEY);
+  history.replaceState({}, "", window.location.pathname);
+}
 let clientId = localStorage.getItem(STORAGE_KEY);
 let tokenClient = null;
 let accessToken = null;
