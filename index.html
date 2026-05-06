@@ -565,6 +565,7 @@
 
 <script>
 const STORAGE_KEY = "calendar-app-client-id";
+const DEFAULT_CLIENT_ID = "649649731227-ph9eb6nugadules79irs8fo9ccvd5m9n.apps.googleusercontent.com";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 
@@ -573,7 +574,7 @@ if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(STORAGE_KEY);
   history.replaceState({}, "", window.location.pathname);
 }
-let clientId = localStorage.getItem(STORAGE_KEY);
+let clientId = localStorage.getItem(STORAGE_KEY) || DEFAULT_CLIENT_ID;
 let accessToken = null;
 let gapiReady = false;
 
