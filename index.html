@@ -406,51 +406,63 @@ $("#save-client-id").addEventListener("click", () => {
   initAuth();
 });
 
-// -------- Auth --------
+// -------- Auth (redirect flow — works reliably on iOS Safari) --------
 function gapiLoaded() {
   gapi.load("client", async () => {
     await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
     gapiReady = true;
-    maybeReady();
+    if (clientId) initAuth();
   });
 }
-function gisLoaded() {
-  gisReady = true;
-  maybeReady();
-}
-function maybeReady() {
-  if (gapiReady && gisReady && clientId) initAuth();
-}
 window.addEventListener("load", () => {
-  // Poll for libs since they load async
   const poll = setInterval(() => {
-    if (window.gapi && !gapiReady) gapiLoaded();
-    if (window.google && window.google.accounts && !gisReady) gisLoaded();
-    if (gapiReady && gisReady) clearInterval(poll);
+    if (window.gapi && !gapiReady) { gapiLoaded(); clearInterval(poll); }
   }, 100);
   if (!clientId) showSetup();
 });
 
 function initAuth() {
-  if (!gapiReady || !gisReady || !clientId) return;
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
-    scope: SCOPES,
-    callback: (resp) => {
-      if (resp.error) { showToast("Auth error: " + resp.error); return; }
-      accessToken = resp.access_token;
-      gapi.client.setToken({ access_token: accessToken });
+  if (!gapiReady || !clientId) return;
+
+  // Returning from Google's OAuth redirect — the access token is in the URL hash
+  if (window.location.hash.includes("access_token=")) {
+    const p = new URLSearchParams(window.location.hash.substring(1));
+    const err = p.get("error");
+    if (err) {
+      showToast("OAuth error: " + err);
+      $("#auth-gate").classList.remove("hidden");
+      $("#app").classList.add("hidden");
+      history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+    const token = p.get("access_token");
+    if (token) {
+      accessToken = token;
+      gapi.client.setToken({ access_token: token });
+      history.replaceState({}, "", window.location.pathname);
       $("#auth-gate").classList.add("hidden");
+      $("#setup").classList.add("hidden");
       $("#app").classList.remove("hidden");
       buildDay();
       loadEvents();
+      return;
     }
-  });
+  }
+
   $("#auth-gate").classList.remove("hidden");
   $("#app").classList.add("hidden");
 }
+
 $("#signin-btn").addEventListener("click", () => {
-  if (tokenClient) tokenClient.requestAccessToken({ prompt: "consent" });
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: "token",
+    scope: SCOPES,
+    include_granted_scopes: "true",
+    prompt: "consent"
+  });
+  window.location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
 });
 $("#reset-setup").addEventListener("click", () => {
   if (confirm("Reset the OAuth client ID?")) {
