@@ -655,28 +655,29 @@ window.addEventListener("load", () => {
 function initAuth() {
   if (!gapiReady || !clientId) return;
 
-  // Returning from Google's OAuth redirect
-  if (window.location.hash.includes("access_token=")) {
+  // Process anything Google sent us back in the URL hash (token or error)
+  if (window.location.hash) {
     const p = new URLSearchParams(window.location.hash.substring(1));
     const err = p.get("error");
+    const token = p.get("access_token");
+    history.replaceState({}, "", window.location.pathname);
+
     if (err) {
+      sessionStorage.removeItem("auth_redirect_attempted");
       showToast("OAuth error: " + err);
-      $("#auth-gate").classList.remove("hidden");
-      $("#app").classList.add("hidden");
-      history.replaceState({}, "", window.location.pathname);
+      showAuthGate();
       return;
     }
-    const token = p.get("access_token");
-    const expiresIn = parseInt(p.get("expires_in")) || 3600;
     if (token) {
+      const expiresIn = parseInt(p.get("expires_in")) || 3600;
       saveToken(token, expiresIn);
+      sessionStorage.removeItem("auth_redirect_attempted");
       enterApp(token);
-      history.replaceState({}, "", window.location.pathname);
       return;
     }
   }
 
-  // Try restoring a still-valid saved token (so we don't make the user sign in every visit)
+  // Try a still-valid saved token first
   const savedToken = localStorage.getItem(TOKEN_KEY);
   const savedExpiry = parseInt(localStorage.getItem(TOKEN_EXPIRY_KEY) || "0");
   if (savedToken && Date.now() < savedExpiry) {
@@ -684,8 +685,33 @@ function initAuth() {
     return;
   }
 
-  $("#auth-gate").classList.remove("hidden");
+  // No valid token — try one auto-redirect to Google. If you're signed into Google
+  // and have already authorized the app, this is silent (round trip in ~half a second).
+  if (!sessionStorage.getItem("auth_redirect_attempted")) {
+    sessionStorage.setItem("auth_redirect_attempted", "1");
+    redirectToGoogle();
+    return;
+  }
+
+  // Auto-redirect already happened this session and didn't yield a token — show the manual button
+  showAuthGate();
+}
+
+function redirectToGoogle() {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: "token",
+    scope: SCOPES,
+    include_granted_scopes: "true"
+  });
+  window.location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
+}
+
+function showAuthGate() {
+  $("#setup").classList.add("hidden");
   $("#app").classList.add("hidden");
+  $("#auth-gate").classList.remove("hidden");
 }
 
 function saveToken(token, expiresInSec) {
@@ -712,14 +738,8 @@ function enterApp(token) {
 }
 
 $("#signin-btn").addEventListener("click", () => {
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: window.location.origin + window.location.pathname,
-    response_type: "token",
-    scope: SCOPES,
-    include_granted_scopes: "true"
-  });
-  window.location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
+  sessionStorage.removeItem("auth_redirect_attempted");
+  redirectToGoogle();
 });
 $("#reset-setup").addEventListener("click", () => {
   if (confirm("Reset the OAuth client ID?")) {
