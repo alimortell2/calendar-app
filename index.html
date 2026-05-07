@@ -129,7 +129,7 @@
   .day-grid .timeline-tap {
     position: absolute; left: 56px; right: 8px; top: 0; bottom: 0;
   }
-  /* Events: visual only, no pointer events — taps fall through to timeline */
+  /* Events: visual only, taps fall through to timeline EXCEPT for the open button */
   .event {
     position: absolute; left: 60px; right: 12px;
     background: var(--evt-blue); color: white;
@@ -143,8 +143,26 @@
   }
   .event.tentative { opacity: 0.5; background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.15) 4px, rgba(255,255,255,0.15) 8px); }
   .event.declined { opacity: 0.25; text-decoration: line-through; }
-  .event-title { font-weight: 600; }
+  .event-title { font-weight: 600; padding-right: 36px; }
   .event-time { font-size: 11px; opacity: 0.85; }
+  .event-open-btn {
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.18);
+    border: none;
+    color: white;
+    font-size: 16px;
+    line-height: 1;
+    border-radius: 6px;
+    cursor: pointer;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .event-open-btn:active { background: rgba(255,255,255,0.35); }
+  .week-event .event-open-btn { width: 22px; height: 22px; font-size: 12px; top: 1px; right: 1px; border-radius: 4px; }
 
   /* Now line */
   .now-line {
@@ -882,7 +900,7 @@ function renderWeekEvents() {
     div.className = cls.join(" ");
     div.style.top = top + "px";
     div.style.height = height + "px";
-    div.textContent = e.summary || "(no title)";
+    div.innerHTML = `<span>${escapeHtml(e.summary || "(no title)")}</span><button class="event-open-btn" data-html-link="${e.htmlLink || ""}" aria-label="Open in Google Calendar">↗</button>`;
     cols[dayIdx].appendChild(div);
   });
 }
@@ -1020,7 +1038,8 @@ function renderDayEvents() {
     div.style.top = top + "px";
     div.style.height = height + "px";
     div.innerHTML = `<div class="event-title">${escapeHtml(e.summary || "(no title)")}</div>
-                     <div class="event-time">${fmtTime(start)} – ${fmtTime(end)}</div>`;
+                     <div class="event-time">${fmtTime(start)} – ${fmtTime(end)}</div>
+                     <button class="event-open-btn" data-html-link="${e.htmlLink || ""}" aria-label="Open in Google Calendar">↗</button>`;
     grid.appendChild(div);
   });
 }
@@ -1131,6 +1150,16 @@ $("#quick-add").addEventListener("click", () => {
   const m = now.getMinutes();
   now.setMinutes(Math.ceil(m / 15) * 15);
   openModal(now);
+});
+
+// -------- Open meeting in Google Calendar (delegated) --------
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".event-open-btn");
+  if (!btn) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const link = btn.dataset.htmlLink;
+  if (link) window.open(link, "_blank");
 });
 
 // -------- List sheet --------
